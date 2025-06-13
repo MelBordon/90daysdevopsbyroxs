@@ -1,20 +1,35 @@
-ARG NODE_VERSION=20
-FROM node:${NODE_VERSION} 
+# --- Etapa 1: Construcción del Sitio Docusaurus ---
+    FROM node:lts-alpine as builder
 
-WORKDIR /usr/src/app
-
-COPY package*.json ./
-RUN npm ci
-
-FROM nginx:alpine
-FROM nginx:alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-# Asegúrate que index.html y static/ no están en la raíz, sino dentro de build/
-COPY build/ /usr/share/nginx/html/
-# Si NGINX necesita acceder directamente a subcarpetas como static/, también puedes poner:
-# COPY build/static/ /usr/share/nginx/html/static/
-# Pero COPY build/ /usr/share/nginx/html/ suele ser suficiente si build/ contiene todo lo estático.
-
-EXPOSE 3000
-
-CMD ["npm", "start", "--", "--host", "0.0.0.0"]
+    WORKDIR /app
+    
+    COPY package.json package-lock.json ./
+    RUN npm install
+    
+    COPY . .
+    RUN npm run build
+    
+    # --- Etapa 2: Servir el Sitio con NGINX ---
+    FROM nginx:stable-alpine
+    
+    # Copiamos la configuración de NGINX personalizada
+    COPY nginx.conf /etc/nginx/conf.d/default.conf
+    
+    # Eliminar la configuración por defecto de NGINX
+    RUN rm /etc/nginx/conf.d/default.conf
+    
+    # Copiar los archivos estáticos generados desde la etapa 'builder'
+    COPY --from=builder /app/build /usr/share/nginx/html/
+    
+    # Crear nuestro propio script de entrada
+    COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+    RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+    
+    # Exponer el puerto 80 (puerto por defecto de NGINX)
+    EXPOSE 80
+    
+    # Usar nuestro propio script como ENTRYPOINT
+    ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+    
+    # CMD no es necesario si el ENTRYPOINT ya ejecuta Nginx directamente
+    CMD []
